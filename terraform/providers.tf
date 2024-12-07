@@ -1,21 +1,20 @@
-# Define required providers
 terraform {
+  # Ensure compatibility with specific Terraform versions
   required_version = ">= 0.14.0"
   required_providers {
     openstack = {
       source  = "terraform-provider-openstack/openstack"
-      version = "~> 1.53.0"
+      version = "~> 1.53.0" # Specify the provider version
     }
   }
 }
 
-# Configure the OpenStack Provider
-# The values are dynamically picked from the terraform.tfvars for now
 provider "openstack" {
-  user_name        = var.os_username
-  password         = var.os_password
-  auth_url         = var.os_auth_url         # "https://pouta.csc.fi:5001/v3"
-  region           = var.os_region_name      # "regionOne"
-  tenant_name      = var.os_project_name     # "project_2011705"
-  user_domain_name = var.os_user_domain_name # "Default"
+  # Use variables for OpenStack authentication details
+  user_name        = var.openstack_credentials.username
+  password         = var.openstack_credentials.password
+  auth_url         = var.openstack_credentials.auth_url
+  region           = var.openstack_credentials.region_name
+  tenant_name      = var.openstack_credentials.project_name
+  user_domain_name = var.openstack_credentials.user_domain_name
 }

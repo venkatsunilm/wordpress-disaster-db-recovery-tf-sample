@@ -1,135 +1,96 @@
----
+# WordPress Deployment with Disaster Recovery on OpenStack
 
-# **Cloud Environment Provisioning and Configuration**
-
-This repository contains two sub-projects for automating the provisioning and configuration of a cloud environment:
-
-1. **Terraform Project**: Automates the provisioning of cloud infrastructure using CSC's OpenStack `cPouta` service.
-2. **Ansible Project**: Configures and deploys a load balancer and web servers across the provisioned infrastructure.
-
----
-
-## **Table of Contents**
-- [Overview](#overview)
-- [Project Structure](#project-structure)
-- [Getting Started](#getting-started)
-  - [1. Terraform Setup](#1-terraform-setup)
-  - [2. Ansible Configuration](#2-ansible-configuration)
-- [Expected Results](#expected-results)
-- [Troubleshooting](#troubleshooting)
+## Table of Contents
+1. [Overview](#overview)
+2. [Exercise 7: WordPress Deployment](#exercise-7-wordpress-deployment)
+    - [Environment Setup](#environment-setup)
+    - [Installing MySQL Database](#installing-mysql-database)
+    - [Installing Web Server and WordPress](#installing-web-server-and-wordpress)
+    - [Configuring SSL](#configuring-ssl)
+3. [Exercise 8: Disaster Recovery](#exercise-8-disaster-recovery)
+    - [Attaching Persisted Volumes](#attaching-persisted-volumes)
+    - [Restoring WordPress](#restoring-wordpress)
+    - [Changing the Domain Name](#changing-the-domain-name)
+    - [Post Updates](#post-updates)
+4. [Troubleshooting](#troubleshooting)
+5. [References](#references)
 
 ---
 
-## **Overview**
-
-This project demonstrates the complete lifecycle of deploying and configuring a cloud environment:
-
-1. **Provision Infrastructure**: Use Terraform to create a cloud environment with:
-   - A jumphost with public IP (VM1) serving as a load balancer.
-   - Multiple private web servers (VM2, VM3, VM4) connected via a private network.
-
-2. **Configure Environment**: Use Ansible to:
-   - Install and configure Nginx on the jumphost as a load balancer.
-   - Install and configure Nginx on web servers to serve static content.
-   - Set up secure and consistent configurations across all VMs.
+## Overview
+This project demonstrates deploying a WordPress site using OpenStack and implementing disaster recovery mechanisms by attaching persisted volumes and restoring the WordPress database. It involves setting up a MySQL database server, a web server with Nginx, and configuring a self-signed SSL certificate.
 
 ---
 
-## **Project Structure**
+## WordPress Deployment
 
-```
-.
-├── README.md             # Main project README
-├── terraform/            # Terraform project for infrastructure provisioning
-│   ├── README.md         # Terraform-specific README
-│   ├── main.tf           # Terraform configuration file
-│   ├── variables.tf      # Input variables for Terraform
-│   └── providers.tf      # OpenStack provider configuration
-└── ansible/              # Ansible project for configuration management
-    ├── README.md         # Ansible-specific README
-    ├── inventory.ini     # Ansible inventory file
-    ├── webservers.yml    # Playbook for load balancer and web servers
-    ├── files/            # Configuration files
-    │   ├── nginx_proxy.conf
-    │   ├── nginx.conf
+### Environment Setup
+- Two virtual machines (VMs) were provisioned in **OpenStack**:
+  1. **VM1 (Web Server)**: Publicly accessible with Nginx and PHP installed.
+  2. **VM2 (Database Server)**: Private network with MySQL database.
 
-```
+### Installing MySQL Database
+1. **MySQL Installation on VM2**:
+   - Installed MySQL server.
+   - Secured the installation using `mysql_secure_installation` (medium security level).
+   - Created a `wordpress` database and users:
+     - `local_db_user` for local access.
+     - `wp_remote_user` for remote access from VM1.
+
+2. **Database Configuration**:
+   - Edited `/etc/mysql/mysql.conf.d/mysqld.cnf` to bind the MySQL service to the private IP of VM2.
+
+### Installing Web Server and WordPress
+1. **Web Server Setup on VM1**:
+   - Installed Nginx and PHP using a LEMP stack.
+   - Configured Nginx to serve WordPress with PHP.
+
+2. **WordPress Installation**:
+   - Downloaded and configured WordPress on `/var/www/your_domain`.
+   - Set the database connection details in `wp-config.php`:
+     ```
+     DB_NAME: wordpress
+     DB_USER: wp_remote_user
+     DB_PASSWORD: <password>
+     DB_HOST: 192.168.1.99
+     ```
+
+### Configuring SSL
+1. Created a self-signed SSL certificate with OpenSSL.
+2. Updated Nginx to use SSL by creating snippets (`self-signed.conf` and `ssl-params.conf`).
+3. Redirected HTTP traffic to HTTPS.
 
 ---
 
-## **Getting Started**
+## Disaster Recovery
 
-### **1. Terraform Setup**
+### Attaching Persisted Volumes
+1. Created and attached a persisted OpenStack volume (`/dev/vdb`) to the database server (VM2).
+2. Restored the database by:
+   - Mounting the volume at `/mnt/wordpress_db`.
+   - Linking it to the MySQL data directory (`/var/lib/mysql`).
+   - Restarting the MySQL service.
 
-#### **Step 1: Install Terraform**
-Follow the instructions in `terraform/README.md` to install and configure Terraform.
+### Restoring WordPress
+1. Verified that WordPress connected to the restored database.
+2. Ensured the site was running at `https://vmxxxx.kaj.pouta.csc.fi`.
 
-#### **Step 2: Provision the Infrastructure**
-1. Navigate to the Terraform project directory:
+### Changing the Domain Name
+1. Checked the domain name using:
    ```bash
-   cd terraform/
+   nslookup <floating_ip>
    ```
-2. Initialize Terraform:
-   ```bash
-   terraform init
-   ```
-3. Plan and apply the configuration:
-   ```bash
-   terraform apply
-   ```
-
-### **2. Ansible Configuration**
-
-#### **Step 1: Install Ansible**
-Follow the instructions in `ansible/README.md` to install Ansible.
-
-#### **Step 2: Configure Load Balancer and Web Servers**
-1. Navigate to the Ansible project directory:
-   ```bash
-   cd ansible/
-   ```
-2. Test connectivity to all VMs:
-   ```bash
-   ansible -i inventory.ini -m ping all
-   ```
-3. Run the Ansible playbook:
-   ```bash
-   ansible-playbook -i inventory.ini webservers.yml
+2. Updated the domain in the WordPress database:
+   ```sql
+   UPDATE wp_options SET option_value = 'https://vmxxxx.kaj.pouta.csc.fi' WHERE option_name = 'siteurl';
+   UPDATE wp_options SET option_value = 'https://vmxxxx.kaj.pouta.csc.fi' WHERE option_name = 'home';
    ```
 
 ---
 
-## **Expected Results**
-
-- **Jumphost (VM1)**:
-  - Acts as a load balancer using Nginx.
-  - Forwards HTTP traffic to the web servers in a round-robin manner.
-
-- **Web Servers (VM2, VM3, VM4)**:
-  - Serve the same static HTML content.
-  - Are accessible only from the private network.
-
-You can test the setup by accessing the public IP of the jumphost.
+## Troubleshooting
+- **Error establishing a database connection**: Ensure the correct MySQL user credentials and host IP are set in `wp-config.php`.
+- **SSL issues**: Verify the self-signed certificate is properly configured and added to Nginx.
+- **Persistent volume not mounting**: Ensure the volume is formatted and linked correctly to `/var/lib/mysql`.
 
 ---
-
-## **Troubleshooting**
-
-1. **Terraform Issues**:
-   - Ensure your OpenStack credentials are correctly set in `providers.tf`.
-   - Check for typos in the `variables.tf` file.
-
-2. **Ansible Issues**:
-   - Verify SSH access to all VMs.
-   - Check that `nginx` is running on all servers.
-
-3. **Network Issues**:
-   - Ensure that security groups allow the necessary traffic:
-     - Port `22` for SSH.
-     - Port `80` for HTTP.
-
-Refer to the individual README files for more detailed troubleshooting steps.
-
----
-
-This project provides a modular and automated approach to cloud environment setup and configuration, making it scalable and reusable for various use cases.
